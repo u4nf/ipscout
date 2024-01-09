@@ -1,7 +1,7 @@
 from shodan import Shodan
 from operator import itemgetter
 import ipinfo
-import json, pprint, requests, argparse, csv
+import json, pprint, requests, argparse, csv, logging, sys
 
 #parse arguments
 parser = argparse.ArgumentParser(description='A commandline tool to retrieve metadata about an IP from multiple sources.')
@@ -13,10 +13,15 @@ args=parser.parse_args()
 ip = args.i
 outfile = args.o
 output = {}
+logfile = 'ipScout.log'
+
+#configure logger
+logging.basicConfig(handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(logfile, mode="a"),],level=logging.DEBUG,format='%(asctime)s[%(levelname)s]: %(message)s', datefmt='%d-%m-%Y %H:%M:%S',)
 
 
 def compileCreds():
     #Take creds from csv, populate global variables
+    logging.debug('Commence cred compile')
     creds = []
 
     credsPath = './creds.csv'
@@ -115,8 +120,9 @@ def getHistoricUrls(vtOutput):
 	#compile list of historic Urls as reported by VirusTotal
 	#returns dict
 
+	historicUrls = []
+	
 	if (len(vtOutput['resolutions']) > 0):
-		historicUrls = []
 
 		for i in vtOutput['resolutions']:
 			historicUrls.append(i)
@@ -170,7 +176,7 @@ def buildHTML():
 
 
 	def boilerplate():
-		html = f'<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport"content="width=device-width, initial-scale=1.0">\n<meta http-equiv="X-UA-Compatible"content="ie=edge">\n<title>IP Scout</title>\n<link rel="stylesheet"href="style.css">\n</head>\n<body><div><h1>{output["ip"]}</h1></div>'
+		html = f'<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport"content="width=device-width, initial-scale=1.0">\n<meta http-equiv="X-UA-Compatible"content="ie=edge">\n<title>IP Scout</title>\n<link rel="stylesheet"href="style.css">\n</head>\n<body>'
 		
 		return html
 
@@ -186,7 +192,7 @@ def buildHTML():
 		{output["location"]["city"]}\
 		<img src="{output["location"]["flagURL"]}"/></div> alt="{output["location"]["country_code"]}_flag"/></div>'
 
-		return html + locationDIV
+		return locationDIV
 
 
 	def addNetworkDiv(html):
@@ -203,19 +209,9 @@ def buildHTML():
 		{output["network"]["usageType"]}\
 		<h3>Domain</h3>\
 		{output["network"]["domain"]}\
-		<div><h3>IP Traits</h3>\
-		<h3>VPN</h3>\
-		{output["network"]["isVPN"]}\
-		<h3>TOR</h3>\
-		{output["network"]["isTOR"]}\
-		<h3>Proxy</h3>\
-		{output["network"]["isProxy"]}\
-		<h3>Relay</h3>\
-		{output["network"]["isRelay"]}\
-		</div>\
 		</div>'
 
-		return html + networkDIV
+		return networkDIV
 
 
 	def addPortsDiv(html):
@@ -234,7 +230,7 @@ def buildHTML():
 
 		portsDIV = f'<h2>Open Ports</h2>{portList}</div>'
 
-		return html + portsDIV
+		return portsDIV
 
 
 	def addHistoricUrls(html):
@@ -244,6 +240,7 @@ def buildHTML():
 		#ensure data exists
 		if (len(output['historicURLs']) == 0):
 			historicUrlsDIV += 'None found</div>'
+
 			return historicUrlsDIV
 
 		table = '<table><tr><th>URL</th><th>Last Seen</th></tr>'
@@ -255,7 +252,7 @@ def buildHTML():
 
 		historicUrlsDIV += (table + '</div>')
 
-		return html + historicUrlsDIV
+		return historicUrlsDIV
 
 
 	def addDetections(html):
@@ -265,7 +262,7 @@ def buildHTML():
 		#add AbuseIPDB data
 		if output['abuseIPDBDetections']['totalReports'] > 0:
 			abuseIPDBDIV = f'<div><h3>AbuseIPDB</h3>\
-			<h4>Hostile</h4>%{output["abuseIPDBDetections"]["score"]}\
+			<h4>Hostile</h4>{output["abuseIPDBDetections"]["score"]}%\
 			<h4>Reports</h4>{output["abuseIPDBDetections"]["totalReports"]}\
 			<h4>Last Report</h4>{output["abuseIPDBDetections"]["lastReport"]}\
 			</div>'
@@ -288,12 +285,54 @@ def buildHTML():
 		return html + abuseIPDBDIV + virustotalDIV
 
 
+	def addHeaderDiv(html):
+
+		def detectionsDIV():
+			#build table div from detection engines
+
+			detectionsDIV = f'<div><table><tr><th>Engine<th><th>Score</th></tr>\
+			<tr><td>AbuseIPDB<td><td>{output["abuseIPDBDetections"]["score"]}%</td></tr>\
+			<tr><td columns="2">{output["abuseIPDBDetections"]["lastReport"][:-15]}</td></tr>'
+
+			#add VT detections
+			vtdetections = ''
+			
+			for i in output['vtDetections']:
+				vtdetections += f'<tr><td>{i["url"]}<td><td>{i["positives"]} / {i["total"]}</td></tr>\
+				<tr><td colspan="2">{i["scan_date"][:-9]}</td></tr>'
+
+			detectionsDIV += vtdetections
+
+			detectionsDIV += '</table></div>'
+
+			return detectionsDIV
+
+
+		def vpnDIV():
+			#build table div from vpnapi data
+
+			vpnDIV = f'<div><table><tr><td>VPN</td><td>{output["network"]["isVPN"]}</td></tr>\
+			<tr><td>TOR</td><td>{output["network"]["isTOR"]}</td></tr>\
+			<tr><td>PROXY</td><td>{output["network"]["isProxy"]}</td></tr>\
+			<tr><td>RELAY</td><td>{output["network"]["isRelay"]}</td></tr>\
+			</table></div>'
+
+			return vpnDIV
+
+
+		headerDIV = f'<div><h1>{output["ip"]}</h1>'
+		headerDIV += detectionsDIV() + vpnDIV() + '</div>'
+		
+		return headerDIV 
+		
+
 	html = boilerplate()
-	html = addLocationDiv(html)
-	html = addNetworkDiv(html)
-	html = addPortsDiv(html)
-	html = addHistoricUrls(html)
-	html = addDetections(html)
+	html += addHeaderDiv(html)
+	html += addLocationDiv(html)
+	html += addNetworkDiv(html)
+	html += addPortsDiv(html)
+	html += addHistoricUrls(html)
+	#html += addDetections(html)
 	html += '</body>\n</html>'
 
 	writeHTMLToFile(html)
