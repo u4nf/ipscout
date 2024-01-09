@@ -1,7 +1,8 @@
 from shodan import Shodan
+from datetime import datetime
 from operator import itemgetter
 import ipinfo
-import json, pprint, requests, argparse, csv, logging, sys
+import json, pprint, requests, argparse, csv, logging, sys, base64
 
 #parse arguments
 parser = argparse.ArgumentParser(description='A commandline tool to retrieve metadata about an IP from multiple sources.')
@@ -20,21 +21,55 @@ logging.basicConfig(handlers=[logging.StreamHandler(sys.stdout), logging.FileHan
 
 
 def compileCreds():
-    #Take creds from csv, populate global variables
-    logging.debug('Commence cred compile')
-    creds = []
 
-    credsPath = './creds.csv'
-    with open(credsPath, 'r') as infile:
-        reader = csv.reader(infile)
+	def compileXforceCreds(XforceCreds):
+		#create global dictionary
+		global APIXFORCE
+		APIXFORCE = {}
 
-        for row in reader:
-            creds.append(row)
+		APIXFORCE['key'] = XforceCreds[1]
+		APIXFORCE['password'] = XforceCreds[2]
 
-    #iterate over list, set index 0 as the variable name, index 1 as the value
-    for i in creds:
-    	globals()[i[0]] = i[1]
+
+	#Take creds from csv, populate global variables
+	#Xforce creds must be the first row due to the key / password format
+	logging.debug('Commence cred compile')
+	creds = []
+
+	credsPath = './creds.csv'
+	with open(credsPath, 'r') as infile:
+		reader = csv.reader(infile)
+
+		for row in reader:
+			creds.append(row)
+
+		#create XForce variabe and remove from creds list
+		compileXforceCreds(creds[0])
+		creds = creds[1:]
+
+	#iterate over list, set index 0 as the variable name, index 1 as the value
+	for i in creds:
+		globals()[i[0]] = i[1]
         
+
+def getXForceOutput(ip):
+
+	def createB64(api_key, api_password):
+		#encode api creds for use with API
+
+		string_format = f'{api_key}:{api_password}'.encode()
+		base64_format = f'Basic {base64.b64encode(string_format).decode()}'
+
+		return base64_format
+
+
+	url = f'https://api.xforce.ibmcloud.com/api/ipr/{ip}'
+	headers = {'Authorization': createB64(APIXFORCE['key'], APIXFORCE['password'])}
+
+	response = requests.get(url, headers=headers)
+
+	return json.loads(response.text)
+
 
 def getShodanOutput(ip):
 	client = Shodan(APIshodan)
@@ -134,6 +169,30 @@ def getHistoricUrls(vtOutput):
 
 
 def parseToOutput():
+
+	def getXforceHistory(num):
+		#returns dict containing the <NUM> most recent detections
+
+		def get_created_date(entry):
+			return datetime.strptime(entry['created'], "%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+		def get_recent_entries(historicData):
+
+			def sort_by_created(entry):
+				return get_created_date(entry)
+
+
+			# Sort the history_data based on the "created" field in descending order
+			sorted_history = sorted(historicData, key=sort_by_created, reverse=True)
+
+			# Return the three most recent entries
+			return sorted_history[:num]
+
+
+		return get_recent_entries(xforceOutput['history'])
+
+
 	#parses multiple sources into a single output object
 	output['location'] = vpnapiOutput['location']
 	output['location']['flagURL'] = ipinfoOutput['country_flag_url']
@@ -153,10 +212,15 @@ def parseToOutput():
 	output['abuseIPDBDetections']['totalReports'] = abuseIPDBOutput['data']['totalReports']
 	output['abuseIPDBDetections']['lastReport'] = abuseIPDBOutput['data']['lastReportedAt']
 	output['abuseIPDBDetections']['score'] = abuseIPDBOutput['data']['abuseConfidenceScore']
+	output['xforceData'] = {}
+	output['xforceData']['score'] = xforceOutput['score']
+	output['xforceData']['categories'] = xforceOutput['cats']
+	output['xforceData']['history'] = getXforceHistory(4)
 
 
 def compileJSONData():
 	allData = {}
+	allData['xforceOutput'] = xforceOutput
 	allData['vpnapiOutput'] = vpnapiOutput
 	allData['abuseIPDBOutput'] = abuseIPDBOutput
 	allData['vtOutput'] = vtOutput
@@ -285,20 +349,44 @@ def buildHTML():
 		return html + abuseIPDBDIV + virustotalDIV
 
 
+	def addXforecHistory(html):
+		xforceHistoryDIV = '<div><h2>XForce Detections</h2>'
+
+		#create detections table, set quantity in <parseToOutput()>
+		if len(output['xforceData']['history']) > 0:
+			#create table
+			table = '<table><tr><th>Timestamp</th><th>Reporting Country</th><th>Reason</th><th>Confidence</th></tr>'
+
+			for i in output['xforceData']['history']:
+				table += f'<tr><td>{i["created"][:9]}</td><td>{i["geo"]["country"]}</td><td>{i["reason"]}</td><td>{i["score"] * 10}</td></tr>'
+
+			table += '</table>'
+
+		xforceHistoryDIV += table + '</div>'
+
+		return xforceHistoryDIV
+
+
 	def addHeaderDiv(html):
 
 		def detectionsDIV():
 			#build table div from detection engines
 
-			detectionsDIV = f'<div><table><tr><th>Engine<th><th>Score</th></tr>\
-			<tr><td>AbuseIPDB<td><td>{output["abuseIPDBDetections"]["score"]}%</td></tr>\
-			<tr><td columns="2">{output["abuseIPDBDetections"]["lastReport"][:-15]}</td></tr>'
+			detectionsDIV = f'<div><table><tr><th>Engine</th><th>Score</th></tr>\
+			<tr><td>AbuseIPDB</td><td>{output["abuseIPDBDetections"]["score"]}%</td></tr>\
+			<tr><td columns="2">{output["abuseIPDBDetections"]["lastReport"][:-15]}</td></tr>\
+			<tr><td>IBM XForce</td><td>{output["xforceData"]["score"]} / 10</td></tr>\
+			<tr><td columns="2">Live Intel</td></tr>'
+
+			#add XForce categories
+			for key, value in output['xforceData']['categories'].items():
+				detectionsDIV += f'<tr><td>XForce {key}</td><td>{value}%</td></tr>'
 
 			#add VT detections
 			vtdetections = ''
 			
 			for i in output['vtDetections']:
-				vtdetections += f'<tr><td>{i["url"]}<td><td>{i["positives"]} / {i["total"]}</td></tr>\
+				vtdetections += f'<tr><td>{i["url"]}</td><td>{i["positives"]} / {i["total"]}</td></tr>\
 				<tr><td colspan="2">{i["scan_date"][:-9]}</td></tr>'
 
 			detectionsDIV += vtdetections
@@ -332,6 +420,7 @@ def buildHTML():
 	html += addNetworkDiv(html)
 	html += addPortsDiv(html)
 	html += addHistoricUrls(html)
+	html += addXforecHistory(html)
 	#html += addDetections(html)
 	html += '</body>\n</html>'
 
@@ -340,6 +429,7 @@ def buildHTML():
 
 compileCreds()
 
+xforceOutput = getXForceOutput(ip)
 vpnapiOutput = getVpnapiOutput(ip)
 abuseIPDBOutput = getAbuseIPDBOutput(ip)
 vtOutput = getVTOutput(ip)
