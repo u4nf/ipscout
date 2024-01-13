@@ -20,6 +20,20 @@ logfile = 'ipScout.log'
 logging.basicConfig(handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(logfile, mode="a"),],level=logging.DEBUG,format='%(asctime)s[%(levelname)s]: %(message)s', datefmt='%d-%m-%Y %H:%M:%S',)
 
 
+def showLogo():
+	print(r"""
+	 ___  ________  ________  ________  ________  ___  ___  _________   
+	|\  \|\   __  \|\   ____\|\   ____\|\   __  \|\  \|\  \|\___   ___\ 
+	\ \  \ \  \|\  \ \  \___|\ \  \___|\ \  \|\  \ \  \\\  \|___ \  \_| 
+	 \ \  \ \   ____\ \_____  \ \  \    \ \  \\\  \ \  \\\  \   \ \  \  
+	  \ \  \ \  \___|\|____|\  \ \  \____\ \  \\\  \ \  \\\  \   \ \  \ 
+	   \ \__\ \__\     ____\_\  \ \_______\ \_______\ \_______\   \ \__\
+	    \|__|\|__|    |\_________\|_______|\|_______|\|_______|    \|__|
+	                  \|_________|                                      
+	                                                                    
+	                                                                    """)
+
+
 def compileCreds():
 
 	def compileXforceCreds(XforceCreds):
@@ -196,14 +210,17 @@ def parseToOutput():
 	#parses multiple sources into a single output object
 	output['location'] = vpnapiOutput['location']
 	output['location']['flagURL'] = ipinfoOutput['country_flag_url']
+	output['location']['city'] = ipinfoOutput['city']
+	output['location']['region'] = ipinfoOutput['region']
 	output['network'] = vpnapiOutput['network']
 	output['network']['isp'] = abuseIPDBOutput['data']['isp']
 	output['network']['usageType'] = abuseIPDBOutput['data']['usageType']
 	output['network']['domain'] = abuseIPDBOutput['data']['domain']
-	output['network']['isVPN'] = vpnapiOutput['security']['vpn']
-	output['network']['isTOR'] = vpnapiOutput['security']['tor']
-	output['network']['isProxy'] = vpnapiOutput['security']['proxy']
-	output['network']['isRelay'] = vpnapiOutput['security']['relay']
+	output['VPNData'] = {}
+	output['VPNData']['VPN'] = vpnapiOutput['security']['vpn']
+	output['VPNData']['TOR'] = vpnapiOutput['security']['tor']
+	output['VPNData']['Proxy'] = vpnapiOutput['security']['proxy']
+	output['VPNData']['Relay'] = vpnapiOutput['security']['relay']
 	output['ports'] = shodanOutput['ports']
 	output['ip'] = vpnapiOutput['ip']
 	output['historicURLs'] = historicUrls
@@ -240,7 +257,7 @@ def buildHTML():
 
 
 	def boilerplate():
-		html = f'<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport"content="width=device-width, initial-scale=1.0">\n<meta http-equiv="X-UA-Compatible"content="ie=edge">\n<title>IP Scout</title>\n<link rel="stylesheet"href="style.css">\n</head>\n<body>'
+		html = f'<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport"content="width=device-width, initial-scale=1.0">\n<meta http-equiv="X-UA-Compatible"content="ie=edge">\n<title>IP Scout</title>\n<link rel="stylesheet"href="styles.css">\n</head>\n<body>'
 		
 		return html
 
@@ -254,7 +271,7 @@ def buildHTML():
 		{output["location"]["region"]}\
 		<h3>City</h3>\
 		{output["location"]["city"]}\
-		<img src="{output["location"]["flagURL"]}"/></div> alt="{output["location"]["country_code"]}_flag"/></div>'
+		<img src="{output["location"]["flagURL"]}" alt="{output["location"]["country_code"]}_flag"/></div>'
 
 		return locationDIV
 
@@ -282,7 +299,7 @@ def buildHTML():
 
 		if (output['ports'] == 'No Data Available'):
 			portsDIV = f'<div><h2>Open Ports</h2>None found</div>'
-			return html + portsDIV
+			return portsDIV
 
 		#compile list of ports
 		portList = '<ul>'
@@ -375,7 +392,7 @@ def buildHTML():
 			detectionsDIV = f'<div><table><tr><th>Engine</th><th>Score</th></tr>\
 			<tr><td>AbuseIPDB</td><td>{output["abuseIPDBDetections"]["score"]}%</td></tr>\
 			<tr><td columns="2">{output["abuseIPDBDetections"]["lastReport"][:-15]}</td></tr>\
-			<tr><td>IBM XForce</td><td>{output["xforceData"]["score"]} / 10</td></tr>\
+			<tr><td>IBM XForce</td><td>{int(output["xforceData"]["score"] * 10)}%</td></tr>\
 			<tr><td columns="2">Live Intel</td></tr>'
 
 			#add XForce categories
@@ -399,13 +416,17 @@ def buildHTML():
 		def vpnDIV():
 			#build table div from vpnapi data
 
-			vpnDIV = f'<div><table><tr><td>VPN</td><td>{output["network"]["isVPN"]}</td></tr>\
-			<tr><td>TOR</td><td>{output["network"]["isTOR"]}</td></tr>\
-			<tr><td>PROXY</td><td>{output["network"]["isProxy"]}</td></tr>\
-			<tr><td>RELAY</td><td>{output["network"]["isRelay"]}</td></tr>\
-			</table></div>'
+			vpnDIV = f'<div><table>'
+			print(output['VPNData'])
 
-			return vpnDIV
+			for key, value in output["VPNData"].items():
+
+				if value:
+					vpnDIV += f'<tr style="background-color: indianred;"><td>{key}</td><td>{value}</td></tr>'
+				else:
+					vpnDIV += f'<tr style="opacity:0.2"><td>{key}</td><td>{value}</td></tr>'
+
+			return vpnDIV + '</table></div>'
 
 
 		headerDIV = f'<div><h1>{output["ip"]}</h1>'
@@ -427,6 +448,12 @@ def buildHTML():
 	writeHTMLToFile(html)
 
 
+
+
+
+
+showLogo()
+
 compileCreds()
 
 xforceOutput = getXForceOutput(ip)
@@ -445,3 +472,5 @@ dictToJson(output, outfile)
 dictToJson(allData, 'allData.json')
 
 buildHTML()
+
+
