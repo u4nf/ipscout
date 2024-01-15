@@ -182,6 +182,13 @@ def getHistoricUrls(vtOutput):
 	return historicUrls
 
 
+def getIPApiOutput(ip):
+	url = f'http://api.ipapi.com/api/{ip}?access_key={APIIPAIP}'
+	response = requests.request(method='GET', url=url)
+
+	return json.loads(response.text)
+
+
 def parseToOutput():
 
 	def getXforceHistory(num):
@@ -223,6 +230,7 @@ def parseToOutput():
 	output['VPNData']['Relay'] = vpnapiOutput['security']['relay']
 	output['ports'] = shodanOutput['ports']
 	output['ip'] = vpnapiOutput['ip']
+	output['flag'] = ipapiOutput['location']['country_flag']
 	output['historicURLs'] = historicUrls
 	output['vtDetections'] = vtOutput['detected_urls']
 	output['abuseIPDBDetections'] = {}
@@ -232,7 +240,7 @@ def parseToOutput():
 	output['xforceData'] = {}
 	output['xforceData']['score'] = xforceOutput['score']
 	output['xforceData']['categories'] = xforceOutput['cats']
-	output['xforceData']['history'] = getXforceHistory(4)
+	output['xforceData']['history'] = getXforceHistory(10)
 
 
 def compileJSONData():
@@ -243,6 +251,7 @@ def compileJSONData():
 	allData['vtOutput'] = vtOutput
 	allData['shodanOutput'] = shodanOutput
 	allData['ipinfoOutput'] = ipinfoOutput
+	allData['ipapiOutput'] = ipapiOutput
 
 	return allData
 
@@ -271,7 +280,7 @@ def buildHTML():
 		{output["location"]["region"]}\
 		<h3>City</h3>\
 		{output["location"]["city"]}\
-		<img src="{output["location"]["flagURL"]}" alt="{output["location"]["country_code"]}_flag"/></div>'
+		<img src="{output["flag"]}" alt="{output["location"]["country_code"]}_flag"/></div>'
 
 		return locationDIV
 
@@ -375,7 +384,7 @@ def buildHTML():
 			table = '<table><tr><th>Timestamp</th><th>Reporting Country</th><th>Reason</th><th>Confidence</th></tr>'
 
 			for i in output['xforceData']['history']:
-				table += f'<tr><td>{i["created"][:9]}</td><td>{i["geo"]["country"]}</td><td>{i["reason"]}</td><td>{i["score"] * 10}</td></tr>'
+				table += f'<tr><td>{i["created"][:10]}</td><td>{i["geo"]["country"]}</td><td>{i["reason"]}</td><td>{i["score"] * 10}</td></tr>'
 
 			table += '</table>'
 
@@ -390,10 +399,12 @@ def buildHTML():
 			#build table div from detection engines
 
 			detectionsDIV = f'<div><table><tr><th>Engine</th><th>Score</th></tr>\
-			<tr><td>AbuseIPDB</td><td>{output["abuseIPDBDetections"]["score"]}%</td></tr>\
-			<tr><td columns="2">{output["abuseIPDBDetections"]["lastReport"][:-15]}</td></tr>\
-			<tr><td>IBM XForce</td><td>{int(output["xforceData"]["score"] * 10)}%</td></tr>\
-			<tr><td columns="2">Live Intel</td></tr>'
+			<tr><td>AbuseIPDB</td><td>{output["abuseIPDBDetections"]["score"]}%</td></tr>'
+
+			if output["abuseIPDBDetections"]["score"] > 0:
+				detectionsDIV += f'<tr><td columns="2">{output["abuseIPDBDetections"]["lastReport"][:-15]}</td></tr>'
+
+			detectionsDIV += f'<tr><td>IBM XForce</td><td>{int(output["xforceData"]["score"] * 10)}%</td></tr>'
 
 			#add XForce categories
 			for key, value in output['xforceData']['categories'].items():
@@ -417,14 +428,13 @@ def buildHTML():
 			#build table div from vpnapi data
 
 			vpnDIV = f'<div><table>'
-			print(output['VPNData'])
 
 			for key, value in output["VPNData"].items():
 
 				if value:
-					vpnDIV += f'<tr style="background-color: indianred;"><td>{key}</td><td>{value}</td></tr>'
+					vpnDIV += f'<tr class="highlight"><td>{key}</td><td>{value}</td></tr>'
 				else:
-					vpnDIV += f'<tr style="opacity:0.2"><td>{key}</td><td>{value}</td></tr>'
+					vpnDIV += f'<tr class="dull"><td>{key}</td><td>{value}</td></tr>'
 
 			return vpnDIV + '</table></div>'
 
@@ -455,7 +465,7 @@ def buildHTML():
 showLogo()
 
 compileCreds()
-
+ipapiOutput = getIPApiOutput(ip)
 xforceOutput = getXForceOutput(ip)
 vpnapiOutput = getVpnapiOutput(ip)
 abuseIPDBOutput = getAbuseIPDBOutput(ip)

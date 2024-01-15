@@ -1,0 +1,131 @@
+body {
+	background-color: rgb(25, 65, 86);
+	font-family: 'Cairo', sans-serif;
+}
+
+header {
+	/*background-color: rgb(86, 217, 167);*/
+	margin-bottom: 4em;
+	text-align: center;
+}
+
+h1 {
+	text-align: center;
+	font-size: xx-large;
+	color: whitesmoke;
+	text-align: left;
+	margin-left: 2em;
+
+
+}
+
+h4 {
+	font-weight: 900;
+}
+
+.dull {
+	opacity: 0.2;
+}
+
+.highlight {
+	background-color: tomato;
+}
+
+
+table {
+	border-radius: 15px;
+	margin: auto;
+	border: 8px solid rgb(255, 255, 255, 0.5);
+	font-size: 1.3em;
+	background-color: rgb(255, 255, 255, 0.5);
+	margin-bottom: 5em;
+}
+
+th {
+	border: none;
+	background-color: rgb(255, 255, 255, 0.5);
+}
+
+td {
+	padding-left: 1em;
+	padding-right: 1em;
+	text-align: left;
+}
+
+tr {
+	border: 4px solid white;
+}
+
+.pwned {
+	background-color: #710909;
+	color: whitesmoke;
+}
+
+.notPwned {
+	background-color: rgb(86, 217, 167);
+}
+
+.breachdata .dark{
+	background-color: rgb(100, 200, 167);
+	padding-left: 3em;
+	padding-right: 3em;
+	padding-top: 1.1em;
+	padding-bottom: 1.1em;
+}
+
+.breachdata .light {
+	background-color: rgb(86, 217, 167);
+	padding-left: 3em;
+	padding-right: 3em;
+	padding-top: 1.1em;
+	padding-bottom: 1.1em;
+}
+
+.breachdata h1 {
+	color: black;
+	text-align: center;
+}
+
+.breachdata a {
+	color: #456990;
+}
+
+.breachdata .changecol {
+	display: inline;
+	color: #456990;
+}
+
+.breachdata .impacted {
+	text-align: right;
+}
+
+.breachdata .count {
+	color: red;
+	font-size: xx-large;
+}
+
+.breachdata blockquote {
+	font-size: 1.5em;
+	font-weight: 500;
+}
+
+.breachdata img {
+	display: block;
+	padding: 1em;
+	float: left;
+	width: 10em;
+	margin-right: 1em;
+}
+
+.breachEntry {
+	margin-left: 10%;
+	margin-right: 10%;
+}
+
+.footerlogo {
+	display: block;
+	padding-top: 2em;
+	padding-bottom: 2em;
+	margin: auto;
+	width: 7%;
+}
